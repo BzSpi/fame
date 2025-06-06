@@ -127,24 +127,13 @@ class DatadogMetricsSender(MetricsSender):
             logger.warning("No metrics data to send")
             return
 
-        # Group metrics by dimensions to minimize API calls
-        metrics_by_dimensions = {}
-        for dt, value, dimensions in values:
-            dim_key = frozenset(dimensions.items())  # Make dimensions hashable
-            if dim_key not in metrics_by_dimensions:
-                metrics_by_dimensions[dim_key] = {
-                    "points": [],
-                    "dimensions": dimensions,
-                }
-            metrics_by_dimensions[dim_key]["points"].append((dt.timestamp(), value))
-
         # Send metrics to Datadog
-        for batch in metrics_by_dimensions.values():
+        for dt, value, dimensions in values:
             datadog.api.Metric.send(
                 metric=name,
-                points=batch["points"],
+                points=[(dt.timestamp(), value)],
                 type="gauge",
-                tags=[f"{k}:{v}" for k, v in batch["dimensions"].items()],
+                tags=[f"{k}:{v}" for k, v in dimensions.items()],
             )
         logger.info(
             f"Sent {name} metrics to Datadog",
