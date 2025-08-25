@@ -126,89 +126,86 @@ def run():
         queries_config.append(data)
 
     # Initialize the metrics sender
-    metrics_sender = get_metrics_sender()
-    for query_data in queries_config:
-        metric_name = None
-        try:
-            metric_name = query_data.get("MetricName")
-            query_type = query_data.get("QueryType", LOG_ANALYTICS_QUERY_TYPE)
-            logger.info(f"Querying and sending metric {metric_name}")
+    with get_metrics_sender() as metrics_sender:
+        for query_data in queries_config:
+            metric_name = None
+            try:
+                metric_name = query_data.get("MetricName")
+                query_type = query_data.get("QueryType", LOG_ANALYTICS_QUERY_TYPE)
+                logger.info(f"Querying and sending metric {metric_name}")
 
-            logger.debug(
-                f"Executing query {query_data['Query']} for metric {metric_name}",
-            )
-            if query_type == RESOURCE_GRAPH_QUERY_TYPE:
-                data = resource_graph.run_query(
-                    query_data["Query"],
-                    subscription_id,
-                    creds,
-                )
-            elif query_type == LOG_ANALYTICS_QUERY_TYPE:
-                data = log_analytics.run_query(
-                    query_data["Query"],
-                    log_analytics_workspace_id,
-                    creds,
-                )
-            else:
-                logger.error(
-                    f"Unknown query type {query_type} for metric {metric_name}",
-                )
-                continue
-
-            if len(data) == 0 or len(data["rows"]) == 0:
-                logger.warning(f"No result for metric {metric_name}")
-                continue
-            logger.debug(f"Found data for metric {metric_name}")
-
-            dimensions = [col["name"] for col in data["columns"]]
-            if not ("timestamp" in dimensions and "metric_value" in dimensions):
-                logger.error(
-                    f'Columns "timestamp" and "metric_value" do not exist '
-                    f"in the query results for metric {metric_name}",
-                )
-                continue
-            logger.debug(
-                f"Found `timestamp` and `metric_value` columns for metric {metric_name}",
-            )
-
-            # Remove timestamp & metrics_value from dimensions
-            ix_timestamp = dimensions.index("timestamp")
-            dimensions.pop(ix_timestamp)
-            ix_metric_value = dimensions.index("metric_value")
-            dimensions.pop(ix_metric_value)
-
-            values = []
-            for row in data["rows"]:
-                timestamp = row.pop(ix_timestamp)
-                metric_value = row.pop(ix_metric_value)
-                # recreating map with keys (dimensions) and values (row)
-                metric_dimensions = dict(zip(dimensions, row)) | extra_dimensions
-                values.append((parse(timestamp), metric_value, metric_dimensions))
                 logger.debug(
-                    f"Metric {metric_name} time: {parse(timestamp).isoformat()}",
+                    f"Executing query {query_data['Query']} for metric {metric_name}",
                 )
-                logger.debug(f"Metric {metric_name} value: {metric_value}")
+                if query_type == RESOURCE_GRAPH_QUERY_TYPE:
+                    data = resource_graph.run_query(
+                        query_data["Query"],
+                        subscription_id,
+                        creds,
+                    )
+                elif query_type == LOG_ANALYTICS_QUERY_TYPE:
+                    data = log_analytics.run_query(
+                        query_data["Query"],
+                        log_analytics_workspace_id,
+                        creds,
+                    )
+                else:
+                    logger.error(
+                        f"Unknown query type {query_type} for metric {metric_name}",
+                    )
+                    continue
+
+                if len(data) == 0 or len(data["rows"]) == 0:
+                    logger.warning(f"No result for metric {metric_name}")
+                    continue
+                logger.debug(f"Found data for metric {metric_name}")
+
+                dimensions = [col["name"] for col in data["columns"]]
+                if not ("timestamp" in dimensions and "metric_value" in dimensions):
+                    logger.error(
+                        f'Columns "timestamp" and "metric_value" do not exist '
+                        f"in the query results for metric {metric_name}",
+                    )
+                    continue
                 logger.debug(
-                    f"Metric {metric_name} dimensions: {metric_dimensions}",
+                    f"Found `timestamp` and `metric_value` columns for metric {metric_name}",
                 )
 
-            metrics_sender.send_metrics(metric_name, values)
-            logger.info(f"Metric {metric_name} successfully sent")
-        except log_analytics.LogAnalyticsException:
-            logger.exception(
-                f"Error while running Log Analytics query for {metric_name}",
-            )
-        except resource_graph.ResourceGraphException:
-            logger.exception(
-                f"Error while running Resource Graph query for {metric_name}",
-            )
-        except:  # noqa E722
-            logger.exception(
-                f"Unexpected exception when treating query {metric_name or query_data}",
-            )
+                # Remove timestamp & metrics_value from dimensions
+                ix_timestamp = dimensions.index("timestamp")
+                dimensions.pop(ix_timestamp)
+                ix_metric_value = dimensions.index("metric_value")
+                dimensions.pop(ix_metric_value)
 
-        # Close the metrics sender
-        metrics_sender.close()
+                values = []
+                for row in data["rows"]:
+                    timestamp = row.pop(ix_timestamp)
+                    metric_value = row.pop(ix_metric_value)
+                    # recreating map with keys (dimensions) and values (row)
+                    metric_dimensions = dict(zip(dimensions, row)) | extra_dimensions
+                    values.append((parse(timestamp), metric_value, metric_dimensions))
+                    logger.debug(
+                        f"Metric {metric_name} time: {parse(timestamp).isoformat()}",
+                    )
+                    logger.debug(f"Metric {metric_name} value: {metric_value}")
+                    logger.debug(
+                        f"Metric {metric_name} dimensions: {metric_dimensions}",
+                    )
+
+                metrics_sender.send_metrics(metric_name, values)
+                logger.info(f"Metric {metric_name} successfully sent")
+            except log_analytics.LogAnalyticsException:
+                logger.exception(
+                    f"Error while running Log Analytics query for {metric_name}",
+                )
+            except resource_graph.ResourceGraphException:
+                logger.exception(
+                    f"Error while running Resource Graph query for {metric_name}",
+                )
+            except:  # noqa E722
+                logger.exception(
+                    f"Unexpected exception when treating query {metric_name or query_data}",
+                )
 
 
 if __name__ == "__main__":

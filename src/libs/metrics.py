@@ -63,6 +63,18 @@ class MetricsSender(ABC):
         """
         pass
 
+    def __enter__(self):
+        """
+        Context manager entry, returns self.
+        """
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        """
+        Context manager exit, ensures cleanup.
+        """
+        self.close()
+
     @abstractmethod
     def send_metrics(
         self, name: str, values: List[Tuple[datetime, float, Dict[str, str]]]
@@ -223,6 +235,8 @@ class SignalFxMetricsSender(MetricsSender):
 
         :return: None
         """
-        if hasattr(self, "ingest") and self.ingest:
+        try:
             self.ingest.stop()
             logger.info("SignalFx client connection closed")
+        except Exception as e:
+            logger.error(f"Error closing SignalFx client: {e}")
