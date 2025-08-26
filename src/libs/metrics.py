@@ -31,7 +31,9 @@ def get_metrics_sender() -> "MetricsSender":
     # Prioritize Datadog if both are available
     if dd_api_key:
         logger.info("Using Datadog metrics sender")
-        dd_config = {"api_key": dd_api_key}
+        dd_config = {
+            "api_key": dd_api_key,
+        }
         if dd_api_host:
             dd_config["api_host"] = dd_api_host
         return DatadogMetricsSender(**dd_config)
@@ -67,12 +69,14 @@ class MetricsSender(ABC):
         """
         Context manager entry, returns self.
         """
+        logger.debug("Entering metrics sender context manager")
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
         """
         Context manager exit, ensures cleanup.
         """
+        logger.debug("Exiting metrics sender context manager")
         self.close()
 
     @abstractmethod
@@ -120,7 +124,7 @@ class DatadogMetricsSender(MetricsSender):
         self.api_key = api_key
         self.api_host = api_host
 
-        logger.info(f"Initializing Datadog metrics sender with host: {self.api_host}")
+        logger.debug(f"Initializing Datadog metrics sender with host: {self.api_host}")
 
         # Initialize the Datadog client
         datadog.initialize(api_key=self.api_key, api_host=self.api_host)
@@ -136,7 +140,7 @@ class DatadogMetricsSender(MetricsSender):
         :return: None
         """
         if not values:
-            logger.warning("No metrics data to send")
+            logger.warning(f"No metrics data to send for {name}")
             return
 
         # Group metrics by dimensions to minimize API calls
@@ -152,6 +156,9 @@ class DatadogMetricsSender(MetricsSender):
 
         # Send metrics to Datadog
         for batch in metrics_by_dimensions.values():
+            logger.debug(
+                f"Sending metric {name} with points {batch['points']} and dimensions {batch['dimensions']}",
+            )
             datadog.api.Metric.send(
                 metric=name,
                 points=batch["points"],
@@ -184,6 +191,7 @@ class SignalFxMetricsSender(MetricsSender):
         :param token: SignalFx access token
         :param realm: SignalFx realm (default: 'eu0')
         """
+        logger.info(f"Initializing SignalFx metrics sender with realm: {realm}")
         if not token:
             raise ValueError("SignalFx token is required")
         self.token = token
@@ -210,11 +218,14 @@ class SignalFxMetricsSender(MetricsSender):
         :return: None
         """
         if not values:
-            logger.warning("No metrics data to send")
+            logger.warning(f"No metrics data to send for {name}")
             return
 
         sfx_metrics = []
         for dt, v, dim in values:
+            logger.debug(
+                f"Sending metric {name} with value {v} at {dt} and dimensions {dim}",
+            )
             sfx_metrics.append(
                 {
                     "metric": name,
@@ -226,7 +237,7 @@ class SignalFxMetricsSender(MetricsSender):
 
         self.ingest.send(gauges=sfx_metrics)
         logger.info(
-            f"Sent {len(name)} metrics to SignalFx",
+            f"Sent {name} metrics to SignalFx",
         )
 
     def close(self) -> None:
@@ -235,6 +246,7 @@ class SignalFxMetricsSender(MetricsSender):
 
         :return: None
         """
+        logger.debug("Closing SignalFx client connection")
         try:
             self.ingest.stop()
             logger.info("SignalFx client connection closed")
