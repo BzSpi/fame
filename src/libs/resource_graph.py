@@ -1,6 +1,10 @@
 """Azure Resource Graph management."""
+import logging
 
 import requests
+from requests.adapters import HTTPAdapter, Retry
+
+logger = logging.getLogger("log_queries")
 
 
 class ResourceGraphException(Exception):
@@ -27,9 +31,18 @@ def run_query(query, subscription_id, credentials):
 
     url = "https://management.azure.com/providers/Microsoft.ResourceGraph/resources?api-version=2020-04-01-preview"
     params = {"query": query, "subscriptions": [subscription_id]}
-    result = requests.post(url, json=params, headers=query_headers)
+
+    s = requests.Session()
+
+    retries = Retry(total=2)
+    s.mount('https://', HTTPAdapter(max_retries=retries))
+
+    result = s.post(url, json=params, headers=query_headers)
 
     if result.status_code != 200:
+        logger.error(
+            f"Error while querying Resource Graph: {result.status_code} - {result.text}",
+        )
         try:
             message = result.json()["error"]["message"]
         except:  # noqa E722

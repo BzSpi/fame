@@ -1,6 +1,10 @@
 """Azure Log Analytics management."""
+import logging
 
 import requests
+from requests.adapters import HTTPAdapter, Retry
+
+logger = logging.getLogger("log_queries")
 
 
 class LogAnalyticsException(Exception):
@@ -29,9 +33,18 @@ def run_query(query, log_analytics_workspace_id, credentials):
         f"https://api.loganalytics.io/v1/workspaces/{log_analytics_workspace_id}/query"
     )
     params = {"query": query}
-    result = requests.post(url, json=params, headers=query_headers)
+
+    s = requests.Session()
+
+    retries = Retry(total=2)
+    s.mount('https://', HTTPAdapter(max_retries=retries))
+
+    result = s.post(url, json=params, headers=query_headers)
 
     if result.status_code != 200:
+        logger.error(
+            f"Error while querying Log Analytics {log_analytics_workspace_id}: {result.status_code} - {result.text}",
+        )
         try:
             message = result.json()["error"]["message"]
         except:  # noqa E722
